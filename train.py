@@ -33,15 +33,29 @@ class ResBlock(nn.Module):
         return x + h
 
 
+def poly_features(x):
+    """Add pairwise interaction features: x_i * x_j for all i <= j."""
+    # x: (batch, d)
+    d = x.shape[1]
+    pairs = []
+    for i in range(d):
+        for j in range(i, d):
+            pairs.append(x[:, i] * x[:, j])
+    return torch.cat([x, torch.stack(pairs, dim=1)], dim=1)
+
+
 class NNRegressor(nn.Module):
     def __init__(self, in_dim, out_dim, hidden_dim, n_hidden, dropout=0.0):
         super().__init__()
-        self.proj_in = nn.Linear(in_dim, hidden_dim)
+        # in_dim will be augmented by poly features: d + d*(d+1)/2
+        aug_dim = in_dim + in_dim * (in_dim + 1) // 2
+        self.proj_in = nn.Linear(aug_dim, hidden_dim)
         self.blocks = nn.ModuleList([ResBlock(hidden_dim, dropout) for _ in range(n_hidden)])
         self.ln_out = nn.LayerNorm(hidden_dim)
         self.proj_out = nn.Linear(hidden_dim, out_dim)
 
     def forward(self, x):
+        x = poly_features(x)
         x = F.gelu(self.proj_in(x))
         for block in self.blocks:
             x = block(x)
@@ -53,7 +67,7 @@ class NNRegressor(nn.Module):
 # ---------------------------------------------------------------------------
 
 HIDDEN_DIM = 256
-N_HIDDEN = 6
+N_HIDDEN = 8
 DROPOUT = 0.0
 BATCH_SIZE = 256
 LR = 1e-3
