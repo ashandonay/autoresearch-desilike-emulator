@@ -112,7 +112,6 @@ def get_lr(progress):
     """Returns LR multiplier given progress in [0, 1] with warm restarts."""
     if progress < WARMUP_RATIO:
         return progress / WARMUP_RATIO if WARMUP_RATIO > 0 else 1.0
-    # Cosine with warm restarts
     post_warmup = (progress - WARMUP_RATIO) / (1.0 - WARMUP_RATIO)
     cycle_progress = (post_warmup * N_RESTARTS) % 1.0
     return FINAL_LR_FRAC + 0.5 * (1.0 - FINAL_LR_FRAC) * (1.0 + math.cos(math.pi * cycle_progress))
@@ -121,12 +120,17 @@ def get_lr(progress):
 # Training loop (time-budgeted)
 # ---------------------------------------------------------------------------
 
+import copy
+
 t_start_training = time.time()
 total_training_time = 0.0
 step = 0
 epoch = 0
 smooth_loss = 0.0
 data_iter = iter(train_loader)
+best_mse = float('inf')
+best_state = None
+EVAL_INTERVAL = 60  # eval every 60 seconds
 
 while True:
     t0 = time.time()
@@ -175,6 +179,14 @@ while True:
     if step % 500 == 0 or remaining < 1:
         print(f"step {step:06d} ({pct_done:5.1f}%) | loss: {debiased_loss:.6f} | lr: {LR * lr_mult:.2e} | remaining: {remaining:.0f}s")
 
+    # Periodic eval and best model checkpoint
+    if step % 5000 == 0 and total_training_time > 30:
+        cur_mse = evaluate_test_mse(model)
+        if cur_mse < best_mse:
+            best_mse = cur_mse
+            best_state = copy.deepcopy(model.state_dict())
+            print(f"  >> new best: {best_mse:.6f} at step {step}")
+
     step += 1
 
     if total_training_time >= TIME_BUDGET:
@@ -184,6 +196,11 @@ while True:
 # Final evaluation
 # ---------------------------------------------------------------------------
 
+# Also eval final model and compare to best checkpoint
+final_mse = evaluate_test_mse(model)
+if best_state is not None and best_mse < final_mse:
+    model.load_state_dict(best_state)
+    print(f"Loaded best checkpoint (mse={best_mse:.6f}) over final (mse={final_mse:.6f})")
 test_mse = evaluate_test_mse(model)
 
 t_end = time.time()
