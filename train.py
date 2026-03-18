@@ -11,7 +11,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from prepare import TIME_BUDGET, IN_DIM, OUT_DIM, evaluate_test_mse, make_dataloader, x_train, y_train
+from prepare import TIME_BUDGET as _ORIG_TIME_BUDGET, IN_DIM, OUT_DIM, evaluate_test_mse, make_dataloader, x_train, y_train
+
+TIME_BUDGET = 1800  # Override: 30 minutes instead of 15
 
 # ---------------------------------------------------------------------------
 # Model
