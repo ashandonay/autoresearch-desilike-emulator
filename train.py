@@ -18,11 +18,11 @@ from prepare import TIME_BUDGET, IN_DIM, OUT_DIM, evaluate_test_mse, make_datalo
 # ---------------------------------------------------------------------------
 
 class ResBlock(nn.Module):
-    def __init__(self, dim, dropout=0.0):
+    def __init__(self, dim, dropout=0.0, expand=4):
         super().__init__()
         self.ln = nn.LayerNorm(dim)
-        self.fc1 = nn.Linear(dim, dim)
-        self.fc2 = nn.Linear(dim, dim)
+        self.fc1 = nn.Linear(dim, dim * expand)
+        self.fc2 = nn.Linear(dim * expand, dim)
         self.drop = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
     def forward(self, x):
@@ -104,13 +104,16 @@ print(f"Batch size: {BATCH_SIZE}, LR: {LR}, Weight decay: {WEIGHT_DECAY}")
 # LR schedule (cosine decay with warmup, keyed to time progress)
 # ---------------------------------------------------------------------------
 
+N_RESTARTS = 3
+
 def get_lr(progress):
-    """Returns LR multiplier given progress in [0, 1]."""
+    """Returns LR multiplier given progress in [0, 1] with warm restarts."""
     if progress < WARMUP_RATIO:
         return progress / WARMUP_RATIO if WARMUP_RATIO > 0 else 1.0
-    # Cosine decay from 1.0 to FINAL_LR_FRAC
-    decay_progress = (progress - WARMUP_RATIO) / (1.0 - WARMUP_RATIO)
-    return FINAL_LR_FRAC + 0.5 * (1.0 - FINAL_LR_FRAC) * (1.0 + math.cos(math.pi * decay_progress))
+    # Cosine with warm restarts
+    post_warmup = (progress - WARMUP_RATIO) / (1.0 - WARMUP_RATIO)
+    cycle_progress = (post_warmup * N_RESTARTS) % 1.0
+    return FINAL_LR_FRAC + 0.5 * (1.0 - FINAL_LR_FRAC) * (1.0 + math.cos(math.pi * cycle_progress))
 
 # ---------------------------------------------------------------------------
 # Training loop (time-budgeted)
