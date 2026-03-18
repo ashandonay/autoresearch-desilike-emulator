@@ -17,32 +17,47 @@ from prepare import TIME_BUDGET, IN_DIM, OUT_DIM, evaluate_test_mse, make_datalo
 # Model
 # ---------------------------------------------------------------------------
 
+class ResBlock(nn.Module):
+    def __init__(self, dim, dropout=0.0):
+        super().__init__()
+        self.ln = nn.LayerNorm(dim)
+        self.fc1 = nn.Linear(dim, dim)
+        self.fc2 = nn.Linear(dim, dim)
+        self.drop = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
+
+    def forward(self, x):
+        h = self.ln(x)
+        h = F.gelu(self.fc1(h))
+        h = self.drop(h)
+        h = self.fc2(h)
+        return x + h
+
+
 class NNRegressor(nn.Module):
     def __init__(self, in_dim, out_dim, hidden_dim, n_hidden, dropout=0.0):
         super().__init__()
-        layers = [nn.Linear(in_dim, hidden_dim), nn.GELU()]
-        if dropout > 0:
-            layers.append(nn.Dropout(dropout))
-        for _ in range(n_hidden - 1):
-            layers += [nn.Linear(hidden_dim, hidden_dim), nn.GELU()]
-            if dropout > 0:
-                layers.append(nn.Dropout(dropout))
-        layers.append(nn.Linear(hidden_dim, out_dim))
-        self.net = nn.Sequential(*layers)
+        self.proj_in = nn.Linear(in_dim, hidden_dim)
+        self.blocks = nn.ModuleList([ResBlock(hidden_dim, dropout) for _ in range(n_hidden)])
+        self.ln_out = nn.LayerNorm(hidden_dim)
+        self.proj_out = nn.Linear(hidden_dim, out_dim)
 
     def forward(self, x):
-        return self.net(x)
+        x = F.gelu(self.proj_in(x))
+        for block in self.blocks:
+            x = block(x)
+        x = self.ln_out(x)
+        return self.proj_out(x)
 
 # ---------------------------------------------------------------------------
 # Hyperparameters (edit these directly, no CLI flags needed)
 # ---------------------------------------------------------------------------
 
 HIDDEN_DIM = 256
-N_HIDDEN = 4
+N_HIDDEN = 6
 DROPOUT = 0.0
 BATCH_SIZE = 256
-LR = 5e-4
-WEIGHT_DECAY = 1e-6
+LR = 1e-3
+WEIGHT_DECAY = 1e-5
 WARMUP_RATIO = 0.05     # fraction of time budget for LR warmup
 FINAL_LR_FRAC = 0.01    # final LR as fraction of initial
 GRAD_CLIP = 1.0
