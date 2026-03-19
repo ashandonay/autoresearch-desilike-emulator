@@ -103,7 +103,7 @@ print(f"Batch size: {BATCH_SIZE}, LR: {LR}, Weight decay: {WEIGHT_DECAY}")
 # LR schedule (cosine decay with warmup, keyed to time progress)
 # ---------------------------------------------------------------------------
 
-N_RESTARTS = 5
+N_RESTARTS = 10
 
 def get_lr(progress):
     """Returns LR multiplier given progress in [0, 1] with warm restarts."""
