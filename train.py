@@ -29,7 +29,7 @@ class ResBlock(nn.Module):
 
     def forward(self, x):
         h = self.ln(x)
-        h = F.mish(self.fc1(h))
+        h = F.silu(self.fc1(h))
         h = self.drop(h)
         h = self.fc2(h)
         return x + h
@@ -55,7 +55,7 @@ class NNRegressor(nn.Module):
         self.proj_out = nn.Linear(hidden_dim, out_dim)
 
     def forward(self, x):
-        x = F.mish(self.proj_in(x))
+        x = F.silu(self.proj_in(x))
         for block in self.blocks:
             x = block(x)
         x = self.ln_out(x)
