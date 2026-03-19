@@ -49,15 +49,12 @@ def poly_features(x):
 class NNRegressor(nn.Module):
     def __init__(self, in_dim, out_dim, hidden_dim, n_hidden, dropout=0.0):
         super().__init__()
-        # in_dim will be augmented by poly features: d + d*(d+1)/2
-        aug_dim = in_dim + in_dim * (in_dim + 1) // 2
-        self.proj_in = nn.Linear(aug_dim, hidden_dim)
+        self.proj_in = nn.Linear(in_dim, hidden_dim)
         self.blocks = nn.ModuleList([ResBlock(hidden_dim, dropout) for _ in range(n_hidden)])
         self.ln_out = nn.LayerNorm(hidden_dim)
         self.proj_out = nn.Linear(hidden_dim, out_dim)
 
     def forward(self, x):
-        x = poly_features(x)
         x = F.mish(self.proj_in(x))
         for block in self.blocks:
             x = block(x)
