@@ -68,8 +68,8 @@ class NNRegressor(nn.Module):
 # Hyperparameters (edit these directly, no CLI flags needed)
 # ---------------------------------------------------------------------------
 
-HIDDEN_DIM = 128
-N_HIDDEN = 8
+HIDDEN_DIM = 64
+N_HIDDEN = 12
 DROPOUT = 0.0
 BATCH_SIZE = 256
 LR = 1e-3
