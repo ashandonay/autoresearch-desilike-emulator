@@ -64,7 +64,7 @@ class NNRegressor(nn.Module):
 # ---------------------------------------------------------------------------
 
 HIDDEN_DIM = 32
-N_HIDDEN = 32
+N_HIDDEN = 24
 DROPOUT = 0.0
 BATCH_SIZE = 256
 LR = 1e-3
