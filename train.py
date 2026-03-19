@@ -28,8 +28,7 @@ class ResBlock(nn.Module):
         self.drop = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
 
     def forward(self, x):
-        h = self.ln(x)
-        h = F.silu(self.fc1(h))
+        h = F.silu(self.fc1(x))
         h = self.drop(h)
         h = self.fc2(h)
         return x + h
@@ -58,7 +57,6 @@ class NNRegressor(nn.Module):
         x = F.silu(self.proj_in(x))
         for block in self.blocks:
             x = block(x)
-        x = self.ln_out(x)
         return self.proj_out(x)
 
 # ---------------------------------------------------------------------------
