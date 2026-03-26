@@ -1,4 +1,4 @@
-# Autoresearch Emulator
+# Autoresearch desilike emulator
 
 ## Autoresearch Loop
 
