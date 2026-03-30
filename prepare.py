@@ -19,14 +19,10 @@ from torch.utils.data import DataLoader, TensorDataset
 
 TIME_BUDGET = 900  # training time budget in seconds (15 minutes)
 
-ANALYSIS = os.environ.get("EMULATOR_ANALYSIS", "bao")        # "bao" or "shapefit"
-COSMO_MODEL = os.environ.get("EMULATOR_COSMO_MODEL", "base_omegak_w_wa")  # e.g. "base", "base_w", "base_w_wa", "base_omegak", "base_omegak_w_wa"
-QUANTITY = os.environ.get("EMULATOR_QUANTITY", "covar")       # "mean" or "covar"
-DATA_VERSION = os.environ.get("EMULATOR_DATA_VERSION", "3")   # e.g. "1", "2", "3"
 TRACER = os.environ.get("EMULATOR_TRACER", "LRG2")            # set to "" for no tracer prefix
 
-_BASE_DIR = os.path.expanduser("~/scratch/bedcosmo/num_tracers/emulator")
-DATA_DIR = os.path.join(_BASE_DIR, "training_data", ANALYSIS, COSMO_MODEL, QUANTITY, f"v{DATA_VERSION}")
+_DEFAULT_DATA_DIR = os.path.expanduser("~/scratch/bedcosmo/num_tracers/emulator/training_data/bao/base_omegak_w_wa/covar/v3")
+DATA_DIR = os.environ.get("EMULATOR_DATA_DIR", _DEFAULT_DATA_DIR)
 
 # ---------------------------------------------------------------------------
 # Data loading
@@ -142,8 +138,7 @@ def evaluate_test_mse(model):
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    print(f"\nAnalysis: {ANALYSIS}, Cosmo model: {COSMO_MODEL}, Quantity: {QUANTITY}, Version: v{DATA_VERSION}, Tracer: {TRACER or '(none)'}")
-    print(f"Data directory: {DATA_DIR}")
+    print(f"\nData directory: {DATA_DIR}, Tracer: {TRACER or '(none)'}")
     print(f"Train: {x_train.shape[0]} samples, {x_train.shape[1]} inputs -> {y_train.shape[1]} outputs")
     print(f"Test:  {x_test.shape[0]} samples, {x_test.shape[1]} inputs -> {y_test.shape[1]} outputs")
     print(f"Device: {_device}")
