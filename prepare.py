@@ -17,7 +17,8 @@ from torch.utils.data import DataLoader, TensorDataset
 # Constants (fixed, do not modify)
 # ---------------------------------------------------------------------------
 
-TIME_BUDGET = 900  # training time budget in seconds (15 minutes)
+TIME_BUDGET = 900   # wall-clock budget for autoresearch evaluation (15 minutes)
+TOTAL_EPOCHS = 10000  # total epochs for the full training run (matches train_nn.py default)
 
 TRACER = os.environ.get("EMULATOR_TRACER", "LRG2")            # set to "" for no tracer prefix
 
@@ -106,6 +107,8 @@ y_test = torch.from_numpy(_y_test_n).to(_device)
 
 IN_DIM = x_train.shape[1]
 OUT_DIM = y_train.shape[1]
+
+N_TRAIN = x_train.shape[0]
 
 print(f"Data loaded: x_train={x_train.shape}, y_train={y_train.shape}, "
       f"x_test={x_test.shape}, y_test={y_test.shape}, device={_device}")
