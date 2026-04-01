@@ -37,7 +37,9 @@ Known good configs:
 2. **Use epoch-based LR scheduling**: `progress = epoch / TOTAL_EPOCHS` (10,000 epochs total). The schedule shape should match the full production training run.
 3. **Cosine warm restarts with decaying peaks**: `N_RESTARTS` cycles, `LR_GAMMA` decay factor per cycle (< 1.0 to prevent overfitting at later cycles).
 4. **Evaluate every `EVAL_EVERY` epochs** (default: 1000) using `evaluate_test_mse(model)`.
-5. **Early stopping**: Stop after `PATIENCE` consecutive evals with no improvement (default: 3).
+5. **Early stopping** (two levels):
+   - **Within-run**: Stop after `PATIENCE` consecutive evals with no improvement over *this run's* best (default: 3).
+   - **Global best**: At each eval, also compare against the global best test_mse from previous experiments (read from `results.tsv`). If by `GLOBAL_PATIENCE` evals (default: 2) the current run hasn't beaten the global best, stop early and move on to the next experiment.
 6. **Log results to `results.tsv`**: Append one row per eval checkpoint with these tab-separated columns:
    ```
    experiment	epoch	test_mse	best_mse	hidden_dim	n_hidden	expand	lr	lr_gamma	n_restarts	batch_size	description
@@ -49,7 +51,7 @@ Key hyperparameters to expose at the top of the file:
 ```
 HIDDEN_DIM, N_HIDDEN, DROPOUT, EXPAND, BATCH_SIZE, LR, WEIGHT_DECAY,
 WARMUP_FRAC, FINAL_LR_FRAC, N_RESTARTS, LR_GAMMA, GRAD_CLIP, SEED,
-EVAL_EVERY, PATIENCE, EXPERIMENT, DESCRIPTION
+EVAL_EVERY, PATIENCE, GLOBAL_PATIENCE, EXPERIMENT, DESCRIPTION
 ```
 
 ## What you CAN do
