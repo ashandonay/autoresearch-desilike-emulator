@@ -1,114 +1,110 @@
-# autoresearch
+# autoresearch — desilike emulator
 
-This is an experiment to have the LLM do its own research.
+This is an experiment to have the LLM do its own research on neural network emulators for cosmological computations (BAO/shapefit Fisher matrix covariances).
 
 ## Setup
 
 To set up a new experiment, work with the user to:
 
-1. **Agree on a run tag**: propose a tag based on today's date (e.g. `mar5`). The branch `autoresearch/<tag>` must not already exist — this is a fresh run.
-2. **Create the branch**: `git checkout -b autoresearch/<tag>` from current master.
-3. **Read the in-scope files**: The repo is small. Read these files for full context:
-   - `README.md` — repository context.
-   - `prepare.py` — fixed constants, data prep, tokenizer, dataloader, evaluation. Do not modify.
-   - `train.py` — the file you modify. Model architecture, optimizer, training loop.
-4. **Verify data exists**: Check that `~/.cache/autoresearch/` contains data shards and a tokenizer. If not, tell the human to run `uv run prepare.py`.
-5. **Initialize results.tsv**: Create `results.tsv` with just the header row. The baseline will be recorded after the first run.
-6. **Confirm and go**: Confirm setup looks good.
+1. **Agree on a branch name**: e.g. `autoresearch/bao-base-unscaled`. The branch must not already exist.
+2. **Create the branch**: `git checkout -b autoresearch/<name>` from current master.
+3. **Read the in-scope files**:
+   - `program.md` — this file, the experiment protocol.
+   - `prepare.py` — fixed constants, data loading, standardization, evaluation. **Do not modify.**
+4. **Set environment variables** for the data:
+   - `EMULATOR_DATA_DIR`: path to the data directory containing `{TRACER}_train.npz` and `{TRACER}_test.npz`
+   - `EMULATOR_TRACER`: tracer name (default: "LRG2")
+5. **Create `train.py`** following the template below.
+6. **Initialize `experiments.md`** with the first experiment reasoning.
+7. **Confirm and go**: Confirm setup looks good, then kick off experimentation.
 
-Once you get confirmation, kick off the experimentation.
+## Architecture
 
-## Experimentation
+The model is a residual MLP (ResNet regressor):
+- `proj_in`: Linear(in_dim, hidden_dim) + SiLU activation
+- `N_HIDDEN` residual blocks, each: Linear(dim, dim*expand) → SiLU → Dropout → Linear(dim*expand, dim) + skip connection
+- `proj_out`: Linear(hidden_dim, out_dim)
 
-Each experiment runs on a single GPU. The training script runs for a **fixed time budget of 5 minutes** (wall clock training time, excluding startup/compilation). You launch it simply as: `uv run train.py`.
+Known good configs:
+- **base cosmo model**: 24dim, 6blocks, expand=4 (~28K params)
+- **base_omegak_w_wa cosmo model**: 48dim, 6blocks, expand=4 (~113K params)
 
-**What you CAN do:**
-- Modify `train.py` — this is the only file you edit. Everything is fair game: model architecture, optimizer, hyperparameters, training loop, batch size, model size, etc.
+## train.py template
 
-**What you CANNOT do:**
-- Modify `prepare.py`. It is read-only. It contains the fixed evaluation, data loading, tokenizer, and training constants (time budget, sequence length, etc).
-- Install new packages or add dependencies. You can only use what's already in `pyproject.toml`.
-- Modify the evaluation harness. The `evaluate_bpb` function in `prepare.py` is the ground truth metric.
+`train.py` is the only file you create/modify. It must:
 
-**The goal is simple: get the lowest val_bpb.** Since the time budget is fixed, you don't need to worry about training time — it's always 5 minutes. Everything is fair game: change the architecture, the optimizer, the hyperparameters, the batch size, the model size. The only constraint is that the code runs without crashing and finishes within the time budget.
+1. **Import from prepare.py**: `TOTAL_EPOCHS`, `IN_DIM`, `OUT_DIM`, `N_TRAIN`, `evaluate_test_mse`, `make_dataloader`, `x_train`, `y_train`
+2. **Use epoch-based LR scheduling**: `progress = epoch / TOTAL_EPOCHS` (10,000 epochs total). The schedule shape should match the full production training run.
+3. **Cosine warm restarts with decaying peaks**: `N_RESTARTS` cycles, `LR_GAMMA` decay factor per cycle (< 1.0 to prevent overfitting at later cycles).
+4. **Evaluate every `EVAL_EVERY` epochs** (default: 1000) using `evaluate_test_mse(model)`.
+5. **Early stopping**: Stop after `PATIENCE` consecutive evals with no improvement (default: 3).
+6. **Log results to `results.tsv`**: Append one row per eval checkpoint with these tab-separated columns:
+   ```
+   experiment	epoch	test_mse	best_mse	hidden_dim	n_hidden	expand	lr	lr_gamma	n_restarts	batch_size	description
+   ```
+   The file should be created with a header if it doesn't exist, and appended to otherwise. Flush after each write.
+7. **Best model checkpointing**: Keep `best_state = copy.deepcopy(model.state_dict())` and restore it at the end.
 
-**VRAM** is a soft constraint. Some increase is acceptable for meaningful val_bpb gains, but it should not blow up dramatically.
-
-**Simplicity criterion**: All else being equal, simpler is better. A small improvement that adds ugly complexity is not worth it. Conversely, removing something and getting equal or better results is a great outcome — that's a simplification win. When evaluating whether to keep a change, weigh the complexity cost against the improvement magnitude. A 0.001 val_bpb improvement that adds 20 lines of hacky code? Probably not worth it. A 0.001 val_bpb improvement from deleting code? Definitely keep. An improvement of ~0 but much simpler code? Keep.
-
-**The first run**: Your very first run should always be to establish the baseline, so you will run the training script as is.
-
-## Output format
-
-Once the script finishes it prints a summary like this:
-
+Key hyperparameters to expose at the top of the file:
 ```
----
-val_bpb:          0.997900
-training_seconds: 300.1
-total_seconds:    325.9
-peak_vram_mb:     45060.2
-mfu_percent:      39.80
-total_tokens_M:   499.6
-num_steps:        953
-num_params_M:     50.3
-depth:            8
+HIDDEN_DIM, N_HIDDEN, DROPOUT, EXPAND, BATCH_SIZE, LR, WEIGHT_DECAY,
+WARMUP_FRAC, FINAL_LR_FRAC, N_RESTARTS, LR_GAMMA, GRAD_CLIP, SEED,
+EVAL_EVERY, PATIENCE, EXPERIMENT, DESCRIPTION
 ```
 
-Note that the script is configured to always stop after 5 minutes, so depending on the computing platform of this computer the numbers might look different. You can extract the key metric from the log file:
+## What you CAN do
 
-```
-grep "^val_bpb:" run.log
-```
+- Modify `train.py` — model architecture, optimizer, hyperparameters, training loop, batch size, model size, etc.
+
+## What you CANNOT do
+
+- Modify `prepare.py`. It is read-only. It contains the fixed evaluation, data loading, and training constants.
+- Install new packages or add dependencies. Use only what's in `pyproject.toml`.
+- Modify the evaluation harness. `evaluate_test_mse` in `prepare.py` is the ground truth metric.
+
+## The goal
+
+**Get the lowest test_mse.** This is the MSE on the standardized test set, computed by `evaluate_test_mse()`.
+
+**Simplicity criterion**: All else being equal, simpler is better. A small improvement that adds ugly complexity is not worth it. Removing something and getting equal or better results is a win.
 
 ## Logging results
 
-When an experiment is done, log it to `results.tsv` (tab-separated, NOT comma-separated — commas break in descriptions).
+### experiments.md
 
-The TSV has a header row and 5 columns:
-
-```
-commit	val_bpb	memory_gb	status	description
-```
-
-1. git commit hash (short, 7 chars)
-2. val_bpb achieved (e.g. 1.234567) — use 0.000000 for crashes
-3. peak memory in GB, round to .1f (e.g. 12.3 — divide peak_vram_mb by 1024) — use 0.0 for crashes
-4. status: `keep`, `discard`, or `crash`
-5. short text description of what this experiment tried
-
-Example:
+Before each experiment, append a brief entry explaining *why* you're trying this change and what you expect:
 
 ```
-commit	val_bpb	memory_gb	status	description
-a1b2c3d	0.997900	44.0	keep	baseline
-b2c3d4e	0.993200	44.2	keep	increase LR to 0.04
-c3d4e5f	1.005000	44.0	discard	switch to GeLU activation
-d4e5f6g	0.000000	0.0	crash	double model width (OOM)
+## Experiment 3: 32dim 8blocks (was 24dim 6blocks)
+Increasing capacity to handle higher dynamic range in scaled data.
+Expect lower test_mse if the model was capacity-limited.
+**Result**: test_mse=0.000080 — confirmed, 20% improvement.
 ```
+
+### results.tsv
+
+`results.tsv` accumulates across experiments on the branch. Each eval checkpoint is one row, so you can plot loss curves across experiments by grouping on the `experiment` column. Never overwrite — always append.
 
 ## The experiment loop
 
-The experiment runs on a dedicated branch (e.g. `autoresearch/mar5` or `autoresearch/mar5-gpu0`).
-
 LOOP FOREVER:
 
-1. Look at the git state: the current branch/commit we're on
-2. Tune `train.py` with an experimental idea by directly hacking the code.
-3. git commit
-4. Run the experiment: `uv run train.py > run.log 2>&1` (redirect everything — do NOT use tee or let output flood your context)
-5. Read out the results: `grep "^val_bpb:\|^peak_vram_mb:" run.log`
-6. If the grep output is empty, the run crashed. Run `tail -n 50 run.log` to read the Python stack trace and attempt a fix. If you can't get things to work after more than a few attempts, give up.
-7. Record the results in the tsv (NOTE: do not commit the results.tsv file, leave it untracked by git)
-8. If val_bpb improved (lower), you "advance" the branch, keeping the git commit
-9. If val_bpb is equal or worse, you git reset back to where you started
+1. Look at current results: what's the best test_mse so far? What has/hasn't worked?
+2. Log reasoning to `experiments.md`: what you're trying and why.
+3. Edit `train.py` with the experimental change.
+4. `git commit` the change.
+5. Run: `uv run train.py > run.log 2>&1`
+6. Check results: `tail -20 run.log` for the summary block.
+7. If test_mse improved, keep the commit. If worse, `git reset --hard HEAD~1`.
+8. Repeat.
 
-The idea is that you are a completely autonomous researcher trying things out. If they work, keep. If they don't, discard. And you're advancing the branch so that you can iterate. If you feel like you're getting stuck in some way, you can rewind but you should probably do this very very sparingly (if ever).
+**Run experiments in parallel** on both GPUs (`CUDA_VISIBLE_DEVICES=0/1`) when possible.
 
-**Timeout**: Each experiment should take ~5 minutes total (+ a few seconds for startup and eval overhead). If a run exceeds 10 minutes, kill it and treat it as a failure (discard and revert).
+**Crashes**: If a run crashes with a fixable bug (typo, missing import), fix and re-run. If fundamentally broken, skip it and move on.
 
-**Crashes**: If a run crashes (OOM, or a bug, or etc.), use your judgment: If it's something dumb and easy to fix (e.g. a typo, a missing import), fix it and re-run. If the idea itself is fundamentally broken, just skip it, log "crash" as the status in the tsv, and move on.
+**NEVER STOP**: Once the loop begins, do NOT pause to ask the human if you should continue. You are autonomous. If you run out of ideas, think harder — try combining previous near-misses, try more radical changes. The loop runs until the human interrupts you.
 
-**NEVER STOP**: Once the experiment loop has begun (after the initial setup), do NOT pause to ask the human if you should continue. Do NOT ask "should I keep going?" or "is this a good stopping point?". The human might be asleep, or gone from a computer and expects you to continue working *indefinitely* until you are manually stopped. You are autonomous. If you run out of ideas, think harder — read papers referenced in the code, re-read the in-scope files for new angles, try combining previous near-misses, try more radical architectural changes. The loop runs until the human interrupts you, period.
+## Environment Variables
 
-As an example use case, a user might leave you running while they sleep. If each experiment takes you ~5 minutes then you can run approx 12/hour, for a total of about 100 over the duration of the average human sleep. The user then wakes up to experimental results, all completed by you while they slept!
+- `EMULATOR_DATA_DIR`: path to data directory (default: `~/scratch/bedcosmo/num_tracers/emulator/training_data/bao/base_omegak_w_wa/covar/v3`)
+- `EMULATOR_TRACER`: tracer name, e.g. "LRG2", "BGS" (default: "LRG2")
